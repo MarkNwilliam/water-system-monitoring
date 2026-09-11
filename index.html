@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Water System Monitoring</title>
+<style>
+  :root{
+    --ink:#0f172a; --muted:#64748b; --brand:#0e7490; --brand2:#155e75;
+    --ok:#16a34a; --warn:#d97706; --bad:#dc2626; --line:#e2e8f0; --bg:#f1f5f9;
+    --card:#ffffff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.5}
+  header{background:linear-gradient(135deg,var(--brand),#0f766e);color:#fff;padding:22px 28px}
+  header h1{font-size:22px;font-weight:700}
+  header p{opacity:.9;font-size:13px;margin-top:4px}
+  .wrap{max-width:1200px;margin:0 auto;padding:22px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:22px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .kpi .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+  .kpi .v{font-size:23px;font-weight:700;margin-top:4px}
+  .kpi .s{font-size:12px;margin-top:2px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .card h2{font-size:15px;margin-bottom:12px}
+  .full{grid-column:1/-1}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+  td:first-child,th:first-child{text-align:left}
+  .pos{color:var(--ok);font-weight:600}
+  .neg{color:var(--bad);font-weight:600}
+  .warn{color:var(--warn);font-weight:600}
+  .pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:11px;font-weight:600}
+  .pill.ok{background:#dcfce7;color:var(--ok)}
+  .pill.warn{background:#fef3c7;color:var(--warn)}
+  .pill.bad{background:#fee2e2;color:var(--bad)}
+  button{background:var(--brand);color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer;font-size:13px}
+  button.ghost{background:#fff;color:var(--brand);border:1px solid var(--brand)}
+  button:hover{background:var(--brand2)}
+  .actions{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  canvas{width:100%;height:260px}
+  label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+  input,select{padding:8px;border:1px solid var(--line);border-radius:8px;font-size:13px}
+  form.inline{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+  .sani{display:flex;align-items:center;gap:14px}
+  .sani .ring{width:100px;height:100px;flex:none}
+  .legend{font-size:11px;display:flex;gap:14px;margin-bottom:6px;color:var(--muted)}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}
+  @media(max-width:800px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Water System Monitoring</h1>
+  <p>Purified water loop — conductivity vs USP &lt;645&gt;, RO/UF/EDI rejection, sanitisation schedule</p>
+</header>
+<div class="wrap">
+  <div class="kpis" id="kpis"></div>
+  <div class="actions">
+    <button onclick="seed()">Load demo data</button>
+    <button class="ghost" onclick="addReading()">Log current reading</button>
+  </div>
+  <div class="card full" style="margin-bottom:18px">
+    <h2>Add a reading (point of use)</h2>
+    <form class="inline" onsubmit="addReading(event)">
+      <label>Date <input type="date" id="f_date"></label>
+      <label>Temperature (°C) <input type="number" id="f_temp" step="0.1" value="26"></label>
+      <label>Conductivity (µS/cm) <input type="number" id="f_cond" step="0.01" value="1.0"></label>
+      <button>Add reading</button>
+    </form>
+  </div>
+  <div class="card full">
+    <h2>Conductivity trend with USP &lt;645&gt; stage-1 limit</h2>
+    <div class="legend">
+      <span><span class="dot" style="background:#0e7490"></span>conductivity (µS/cm)</span>
+      <span><span class="dot" style="background:#dc2626"></span>USP limit at measured temp</span>
+      <span><span class="dot" style="background:#fbbf24"></span>exceedance</span>
+    </div>
+    <canvas id="trend"></canvas>
+  </div>
+  <div class="grid" style="margin-top:18px">
+    <div class="card">
+      <h2>Sanitisation schedule</h2>
+      <div class="sani">
+        <canvas class="ring" id="ring" style="height:100px;width:100px"></canvas>
+        <div>
+          <div id="saniStatus" style="font-size:15px;font-weight:700"></div>
+          <div id="saniMeta" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+        </div>
+      </div>
+      <p id="saniNote" style="font-size:12px;color:var(--muted);margin-top:10px"></p>
+    </div>
+    <div class="card">
+      <h2>Latest readings</h2>
+      <table>
+        <thead><tr><th>Date</th><th>Temp</th><th>µS/cm</th><th>USP limit</th><th>Status</th></tr></thead>
+        <tbody id="rowBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+const $ = s => document.getElementById(s);
+const USP = [[0,.6],[5,.8],[10,.9],[15,1.0],[20,1.1],[25,1.3],[30,1.4],[35,1.5],[40,1.7],[45,1.8],[50,2.1],[55,2.2],[60,2.4],[65,2.5],[70,2.7],[75,2.9],[80,3.1],[85,3.3],[90,3.6],[95,3.8],[100,4.1]];
+function limit(t){
+  if(t<=0) return USP[0][1]; if(t>=100) return USP[USP.length-1][1];
+  for(let i=0;i<USP.length-1;i++){
+    const [t0,c0]=USP[i],[t1,c1]=USP[i+1];
+    if(t>=t0&&t<=t1) return c0+(c1-c0)*(t-t0)/(t1-t0);
+  }
+}
+function passes(t,c){ return c<=limit(t); }
+let readings=[];
+let sani={last:'2026-08-15', interval:30, today:'2026-09-09'};
+function daysSince(iso){ return Math.round((new Date(sani.today)-new Date(iso))/86400000); }
+function nextDue(){ const d=new Date(sani.last); d.setDate(d.getDate()+sani.interval); return d.toISOString().slice(0,10); }
+function saniStatusObj(){
+  const ds=daysSince(sani.last), dl=sani.interval-ds;
+  let st; if(dl<0)st='overdue'; else if(dl<=7)st='due soon'; else if(ds===0)st='done today'; else st='in spec';
+  return {daysSince:ds,daysLeft:dl,status:st,next:nextDue()};
+}
+function addReading(e){ if(e)e.preventDefault();
+  readings.push({date:$('f_date').value||sani.today, temp:+$('f_temp').value, cond:+$('f_cond').value});
+  readings.sort((a,b)=>a.date<b.date?-1:1);
+  render();
+}
+function seed(){
+  const d=['2026-08-25','2026-08-26','2026-08-27','2026-08-28','2026-08-29','2026-08-30','2026-08-31','2026-09-01','2026-09-02','2026-09-03','2026-09-04','2026-09-05','2026-09-06','2026-09-07','2026-09-08'];
+  const t=[25.2,25.4,25.8,26.0,26.2,26.4,26.6,26.9,27.1,27.4,27.8,28.1,28.4,28.6,28.9];
+  const c=[0.91,0.93,0.95,0.97,0.99,1.02,1.05,1.08,1.10,1.15,1.22,1.28,1.33,1.38,1.42];
+  readings=d.map((date,i)=>({date,temp:t[i],cond:c[i]}));
+  // plus morning points for a few days
+  render();
+}
+function render(){
+  const last=readings.length?readings[readings.length-1]:null;
+  const stats = readings.length? (()=>{
+    const c=readings.map(r=>r.cond);
+    return {mean:c.reduce((a,x)=>a+x,0)/c.length, max:Math.max(...c), min:Math.min(...c)};
+  })():null;
+  const exceed=readings.filter(r=>!passes(r.temp,r.cond)).length;
+  const sb=saniStatusObj();
+  const stagePIll=sb.status==='overdue'?'<span class="pill bad">overdue</span>':sb.status==='due soon'?'<span class="pill warn">due soon</span>':'<span class="pill ok">in spec</span>';
+  $('kpis').innerHTML=[
+    ['PW loop conductivity',last?last.cond.toFixed(2)+' µS/cm':'—','limit '+limit(last?last.temp:25).toFixed(2)+' at '+ (last?last.temp:25)+'°C'],
+    ['RO rejection', rejection(420,6.5).toFixed(1)+'%','feed 420 → 6.5 µS/cm'],
+    ['EDI rejection', rejection(6.5,0.9).toFixed(1)+'%','feed 6.5 → 0.9 µS/cm'],
+    ['Sanitisation',sb.daysLeft+' days left',sb.next+' '+stagePIll],
+  ].map(k=>'<div class="kpi"><div class="l">'+k[0]+'</div><div class="v">'+k[1]+'</div><div class="s">'+k[2]+'</div></div>').join('');
+  $('rowBody').innerHTML=readings.slice(-8).reverse().map(r=>{
+    const lim=limit(r.temp), ok=passes(r.temp,r.cond);
+    return '<tr><td>'+r.date+'</td><td>'+r.temp.toFixed(1)+'</td><td class="'+(ok?'':'neg')+'">'+r.cond.toFixed(2)+'</td>'+
+      '<td>'+lim.toFixed(2)+'</td><td>'+ (ok?'<span class="pill ok">PASS</span>':'<span class="pill bad">FAIL</span>')+'</td></tr>';
+  }).join('');
+  $('saniStatus').textContent=sb.status.replace(/\b\w/g,c=>c.toUpperCase());
+  $('saniMeta').textContent='last '+sani.last+' · next due '+sb.next+' · interval '+sani.interval+' d';
+  $('saniNote').textContent=sb.status==='overdue'?'OVERDUE — sanitise the loop immediately and re-sample.':
+    sb.status==='due soon'?'Sanitisation scheduled inside the window. Conductivity is trending up — prepare the hot sanitisation cycle now.':
+    'Loop in spec. USP <645> stage-1 evaluation current.';
+  drawTrend();
+  drawRing(sb.daysLeft, sani.interval);
+}
+function rejection(feed,prod){ return (1-prod/feed)*100; }
+function drawTrend(){
+  const c=$('trend'), x=c.getContext('2d');
+  c.width=c.offsetWidth; if(!c.width) return;
+  const w=c.width, h=c.height;
+  x.clearRect(0,0,w,h);
+  if(!readings.length){ x.fillStyle='#64748b'; x.font='14px system-ui'; x.textAlign='center'; x.fillText('No readings logged',w/2,h/2); return; }
+  const pad={l:46,r:12,t:14,b:30}, ax=w-pad.l-pad.r, ay=h-pad.t-pad.b;
+  const cmin=Math.min(0, ...readings.map(r=>r.cond-.05));
+  const cmax=Math.max(1.6, ...readings.map(r=>r.cond+.05));
+  const X=i=>pad.l+i*(ax/(readings.length-1||1));
+  const Y=v=>pad.t+ay-(v-cmin)/(cmax-cmin)*ay;
+  // grid
+  x.strokeStyle='#e2e8f0'; x.lineWidth=1;
+  for(let g=0;g<=4;g++){ const v=cmin+(cmax-cmin)*g/4, yp=Y(v);
+    x.beginPath(); x.moveTo(pad.l,yp); x.lineTo(pad.l+ax,yp); x.stroke();
+    x.fillStyle='#64748b'; x.font='11px system-ui'; x.textAlign='right';
+    x.fillText(v.toFixed(2), pad.l-6, yp+4); }
+  // USP limit line (stepped between readings by temperature)
+  x.strokeStyle='#dc2626'; x.lineWidth=1.5; x.setLineDash([4,3]);
+  x.beginPath();
+  readings.forEach((r,i)=>{ const yp=Y(limit(r.temp)); const px=X(i); i?x.lineTo(px,yp):x.moveTo(px,yp); });
+  x.stroke(); x.setLineDash([]);
+  // conductivity line
+  x.strokeStyle='#0e7490'; x.lineWidth=2;
+  x.beginPath();
+  readings.forEach((r,i)=>{ const px=X(i),py=Y(r.cond); i?x.lineTo(px,py):x.moveTo(px,py); });
+  x.stroke();
+  // points
+  readings.forEach((r,i)=>{
+    const px=X(i),py=Y(r.cond), ok=passes(r.temp,r.cond);
+    x.fillStyle= ok?'#0e7490':'#fbbf24';
+    if(!ok){ x.strokeStyle='#dc2626'; x.lineWidth=2; x.beginPath(); x.arc(px,py,5,0,Math.PI*2); x.stroke(); }
+    x.beginPath(); x.arc(px,py,3.4,0,Math.PI*2); x.fill();
+    if(i%2===0 || !ok){
+      x.fillStyle='#64748b'; x.font='9.5px system-ui'; x.textAlign='center';
+      x.fillText(r.date.slice(5), px, h-10);
+    }
+  });
+}
+function drawRing(left,total){
+  const c=$('ring'), x=c.getContext('2d');
+  c.width=100; c.height=100;
+  const frac=Math.max(0,left/total);
+  x.clearRect(0,0,100,100);
+  x.lineWidth=10; x.lineCap='round';
+  x.strokeStyle='#e2e8f0';
+  x.beginPath(); x.arc(50,50,40,0,Math.PI*2); x.stroke();
+  x.strokeStyle=left<=7?'#d97706':left<0?'#dc2626':'#16a34a';
+  x.beginPath(); x.arc(50,50,40,-Math.PI/2,-Math.PI/2+frac*Math.PI*2); x.stroke();
+  x.fillStyle='#0f172a'; x.font='700 22px system-ui'; x.textAlign='center';
+  x.fillText(Math.max(0,left)+'d',50,57);
+}
+seed();
+</script>
+</body>
+</html>
