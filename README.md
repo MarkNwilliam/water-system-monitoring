@@ -14,10 +14,13 @@ a point-of-use sample.
 [![Stack](https://img.shields.io/badge/stack-HTML%20%2B%20CSS%20%2B%20JS-f59e0b)](#)
 [![Tests](https://img.shields.io/badge/tests-17%20passing-green)](#)
 [![License](https://img.shields.io/badge/license-MIT-green)](#)
+[![Live demo](https://img.shields.io/badge/live%20demo-online-0e7490)](https://marknwilliam.github.io/water-system-monitoring/)
 
 </div>
 
 ---
+
+![Dashboard preview](docs/preview.png)
 
 ## Why this exists
 
@@ -112,6 +115,7 @@ water-system-monitoring/
 ├── index.html                # monitoring dashboard (open this)
 ├── water_monitoring.py       # library + CLI
 ├── test_water_monitoring.py  # unit tests
+├── docs/        # README preview screenshot
 └── README.md
 ```
 
